@@ -4,6 +4,7 @@ import logging
 import re
 import time
 import xml.etree.ElementTree as ET
+import requests
 from queue import Empty
 from threading import Thread
 
@@ -104,20 +105,24 @@ class Robot(Job):
         """
         if not self.chat:  # 没接 ChatGPT，固定回复
             rsp = "你@我干嘛？"
+        elif msg.content in '摸鱼':
+            self.wcf.send_file('https://api.vvhan.com/api/moyu', msg.sender)
+        elif msg.content in '攒劲':
+            self.wcf.send_file('https://api.suyanw.cn/api/ksxjj', msg.sender)
         else:  # 接了 ChatGPT，智能回复
             q = re.sub(r"@.*?[\u2005|\s]", "", msg.content).replace(" ", "")
             rsp = self.chat.get_answer(q, (msg.roomid if msg.from_group() else msg.sender))
 
-        if rsp:
-            if msg.from_group():
-                self.sendTextMsg(rsp, msg.roomid, msg.sender)
-            else:
-                self.sendTextMsg(rsp, msg.sender)
+            if rsp:
+                if msg.from_group():
+                    self.sendTextMsg(rsp, msg.roomid, msg.sender)
+                else:
+                    self.sendTextMsg(rsp, msg.sender)
 
-            return True
-        else:
-            self.LOG.error(f"无法从 ChatGPT 获得答案")
-            return False
+                return True
+            else:
+                self.LOG.error(f"无法从 ChatGPT 获得答案")
+                return False
 
     def processMsg(self, msg: WxMsg) -> None:
         """当接收到消息的时候，会调用本方法。如果不实现本方法，则打印原始消息。
@@ -134,8 +139,27 @@ class Robot(Job):
             if msg.roomid not in self.config.GROUPS:  # 不在配置的响应的群列表里，忽略
                 return
 
+            # 判断是否是主人发送消息
+            if msg.sender in self.config.MASTER:
+                if msg.content in '新闻':
+                    self.newsReportToUser(msg.sender)
+                elif msg.content in '摸鱼':
+                    self.wcf.send_file('https://api.vvhan.com/api/moyu', msg.roomid)
+                elif msg.content in '攒劲':
+                    self.wcf.send_file('https://api.suyanw.cn/api/ksxjj', msg.roomid)
+                elif msg.content in '靓仔':
+                    self.wcf.send_file('https://free.wqwlkj.cn/wqwlapi/sgfj.php?type=image', msg.roomid)
+                else:
+                    self.toAt(msg)
+                return
+
+            if msg.content in '攒劲':
+                self.wcf.send_file('https://api.suyanw.cn/api/ksxjj', msg.roomid)
+                return
+
             if msg.is_at(self.wxid):  # 被@
                 self.toAt(msg)
+                return
 
             else:  # 其他消息
                 self.toChengyu(msg)
@@ -252,3 +276,7 @@ class Robot(Job):
         news = News().get_important_news()
         for r in receivers:
             self.sendTextMsg(news, r)
+
+    def newsReportToUser(self, wxId: str) -> None:
+        news = News().get_important_news()
+        self.sendTextMsg(news, wxId)

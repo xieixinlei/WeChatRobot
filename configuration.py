@@ -35,3 +35,5 @@ class Config(object):
         self.TIGERBOT = yconfig.get("tigerbot", {})
         self.XINGHUO_WEB = yconfig.get("xinghuo_web", {})
         self.CHATGLM = yconfig.get("chatglm", {})
+
+        self.MASTER = yconfig["master"]["enable"]
