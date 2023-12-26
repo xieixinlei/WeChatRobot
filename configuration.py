@@ -37,3 +37,19 @@ class Config(object):
         self.CHATGLM = yconfig.get("chatglm", {})
 
         self.MASTER = yconfig["master"]["enable"]
+        self.API_FUNCTION_DICT = yconfig.get("api_function_dict", {})
+        self.CONFIG = yconfig.get("config", {})
+
+    def write(self, key, value) -> None:
+        print("进入字典写入方法")
+        pwd = os.path.dirname(os.path.abspath(__file__))
+
+        yconfig = self._load_config()
+        yconfig["config"][key] = value
+        print(f"开始写入，最新值{yconfig['config'][key]}")
+        with open(f"{pwd}/config.yaml", "w") as fp:
+            yaml.safe_dump(yconfig, fp)
+
+        print("写入完成")
+        self.reload()
+        print(yconfig.get("config", {}))

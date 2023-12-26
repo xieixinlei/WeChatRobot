@@ -105,10 +105,6 @@ class Robot(Job):
         """
         if not self.chat:  # 没接 ChatGPT，固定回复
             rsp = "你@我干嘛？"
-        elif msg.content in '摸鱼':
-            self.wcf.send_file('https://api.vvhan.com/api/moyu', msg.sender)
-        elif msg.content in '攒劲':
-            self.wcf.send_file('https://api.suyanw.cn/api/ksxjj', msg.sender)
         else:  # 接了 ChatGPT，智能回复
             q = re.sub(r"@.*?[\u2005|\s]", "", msg.content).replace(" ", "")
             rsp = self.chat.get_answer(q, (msg.roomid if msg.from_group() else msg.sender))
@@ -132,38 +128,44 @@ class Robot(Job):
         receivers = msg.roomid
         self.sendTextMsg(content, receivers, msg.sender)
         """
+        # self.config.write("prevent_withdrawal", "true")
+        # self.config.write()
+
+        # 快捷指令消息
+        if msg.content in self.config.API_FUNCTION_DICT:
+            self.apiFuncation(msg)
+            return
+        # 判断是否是消息撤回
+        if msg.type == 10002 and self.config.CONFIG["prevent_withdrawal"]:
+            rsp = f"你撤回了一条消息，消息id是：{msg.id}"
+            self.sendTextMsg(rsp, msg.roomid, msg.sender)
+            return
 
         # 群聊消息
         if msg.from_group():
-            # 如果在群里被 @
-            if msg.roomid not in self.config.GROUPS:  # 不在配置的响应的群列表里，忽略
+            # 不在配置的响应的群列表里，忽略
+            if msg.roomid not in self.config.GROUPS:
                 return
-
+            # 如果在群里被 @
+            elif msg.is_at(self.wxid):
+                self.toAt(msg)
+                return
             # 判断是否是主人发送消息
             if msg.sender in self.config.MASTER:
-                if msg.content in '新闻':
-                    self.newsReportToUser(msg.sender)
-                elif msg.content in '摸鱼':
-                    self.wcf.send_file('https://api.vvhan.com/api/moyu', msg.roomid)
-                elif msg.content in '攒劲':
-                    self.wcf.send_file('https://api.suyanw.cn/api/ksxjj', msg.roomid)
-                elif msg.content in '靓仔':
-                    self.wcf.send_file('https://free.wqwlkj.cn/wqwlapi/sgfj.php?type=image', msg.roomid)
+                if msg.content.startswith("$"):
+                    # 指令操作
+                    # 指令格式 $open{操作内容}/$close{操作内容}/$write{操作内容}
+                    if msg.content.startswith("$open"):
+                        self.sendTextMsg('进入指令打开功能', msg.roomid, msg.sender)
+                    elif msg.content.startswith("$close"):
+                        self.sendTextMsg('进入指令关闭功能', msg.roomid, msg.sender)
+                    elif msg.content.startswith("$write"):
+                        self.sendTextMsg('进入指令写入功能', msg.roomid, msg.sender)
                 else:
                     self.toAt(msg)
                 return
-
-            if msg.content in '攒劲':
-                self.wcf.send_file('https://api.suyanw.cn/api/ksxjj', msg.roomid)
-                return
-
-            if msg.is_at(self.wxid):  # 被@
-                self.toAt(msg)
-                return
-
             else:  # 其他消息
                 self.toChengyu(msg)
-
             return  # 处理完群聊信息，后面就不需要处理了
 
         # 非群聊信息，按消息类型进行处理
@@ -175,12 +177,20 @@ class Robot(Job):
 
         elif msg.type == 0x01:  # 文本消息
             # 让配置加载更灵活，自己可以更新配置。也可以利用定时任务更新。
-            if msg.from_self():
+            if msg.sender in self.config.MASTER:
                 if msg.content == "^更新$":
                     self.config.reload()
                     self.LOG.info("已更新")
             else:
                 self.toChitchat(msg)  # 闲聊
+
+    def apiFuncation(self, msg: WxMsg):
+        if msg.from_group():
+            if msg.sender in self.config.MASTER or msg.is_at(self.wxid):
+                self.wcf.send_file(self.config.API_FUNCTION_DICT[msg.content], msg.roomid)
+        else:
+            self.wcf.send_file(self.config.API_FUNCTION_DICT[msg.content], msg.sender)
+        return
 
     def onMsg(self, msg: WxMsg) -> int:
         try:
