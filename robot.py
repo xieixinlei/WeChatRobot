@@ -18,9 +18,10 @@ from configuration import Config
 from constants import ChatType
 from job_mgmt import Job
 from wcferry import Wcf, WxMsg
-
+import unicodedata
 
 __version__ = "39.0.7.0"
+
 
 class Robot(Job):
     """个性化自己的机器人
@@ -128,13 +129,12 @@ class Robot(Job):
         receivers = msg.roomid
         self.sendTextMsg(content, receivers, msg.sender)
         """
-        # self.config.write("prevent_withdrawal", "true")
-        # self.config.write()
+        # self.config.write("prevent_withdrawal", "测试谢日")
 
         # 快捷指令消息
-        if msg.content in self.config.API_FUNCTION_DICT:
-            self.apiFuncation(msg)
+        if self.apiFuncation(msg):
             return
+
         # 判断是否是消息撤回
         if msg.type == 10002 and self.config.CONFIG["prevent_withdrawal"]:
             rsp = f"你撤回了一条消息，消息id是：{msg.id}"
@@ -147,7 +147,7 @@ class Robot(Job):
             if msg.roomid not in self.config.GROUPS:
                 return
             # 如果在群里被 @
-            elif msg.is_at(self.wxid):
+            if msg.is_at(self.wxid):
                 self.toAt(msg)
                 return
             # 判断是否是主人发送消息
@@ -171,26 +171,57 @@ class Robot(Job):
         # 非群聊信息，按消息类型进行处理
         if msg.type == 37:  # 好友请求
             self.autoAcceptFriendRequest(msg)
-
-        elif msg.type == 10000:  # 系统信息
+            return
+        if msg.type == 10000:  # 系统信息
             self.sayHiToNewFriend(msg)
-
-        elif msg.type == 0x01:  # 文本消息
+            return
+        if msg.type == 0x01:  # 文本消息
             # 让配置加载更灵活，自己可以更新配置。也可以利用定时任务更新。
             if msg.sender in self.config.MASTER:
                 if msg.content == "^更新$":
                     self.config.reload()
                     self.LOG.info("已更新")
-            else:
-                self.toChitchat(msg)  # 闲聊
 
-    def apiFuncation(self, msg: WxMsg):
-        if msg.from_group():
-            if msg.sender in self.config.MASTER or msg.is_at(self.wxid):
-                self.wcf.send_file(self.config.API_FUNCTION_DICT[msg.content], msg.roomid)
+            self.toChitchat(msg)  # 闲聊
+            return
+
+    def apiFuncation(self, msg: WxMsg) -> bool:
+        api_info = None
+        # 判断消息内容前缀是否是接口定义了的key
+        for dictV in self.config.API_FUNCTION_DICT:
+            if msg.content.startswith(dictV['key']):
+                api_info = dictV
+                break
         else:
-            self.wcf.send_file(self.config.API_FUNCTION_DICT[msg.content], msg.sender)
-        return
+            return False
+        if not api_info['existsParam'] and len(msg.content) != len(api_info['key']):
+            return False
+
+        url = api_info['url']
+        msgKey = api_info['key']
+        # url参数替换
+        if api_info['existsParam']:
+            param = ""
+            if 'CJK' in unicodedata.name(msg.content[len(msgKey)]):
+                param = msg.content[len(msgKey):]
+            else:
+                param = msg.content[len(msgKey) + 1:]
+
+            url = url.replace("{text}", param)
+
+        # 开始发送内容
+        if msg.from_group():
+            # 不在配置的响应的群列表里，忽略
+            if msg.roomid not in self.config.GROUPS:
+                return False
+
+            if msg.sender in self.config.MASTER or msg.is_at(self.wxid):
+                self.wcf.send_file(url, msg.roomid)
+                return True
+        else:
+            self.wcf.send_file(url, msg.sender)
+            return True
+        return False
 
     def onMsg(self, msg: WxMsg) -> int:
         try:

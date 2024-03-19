@@ -47,8 +47,8 @@ class Config(object):
         yconfig = self._load_config()
         yconfig["config"][key] = value
         print(f"开始写入，最新值{yconfig['config'][key]}")
-        with open(f"{pwd}/config.yaml", "w") as fp:
-            yaml.safe_dump(yconfig, fp)
+        with open(f"{pwd}/config.yaml", "w", encoding='utf-8') as fp:
+            yaml.safe_dump(yconfig, fp, allow_unicode=True, default_flow_style=False, encoding='utf-8')
 
         print("写入完成")
         self.reload()
